@@ -33,10 +33,8 @@ def nearest_intersected_object(objects, ray_origin, ray_direction):
     return nearest_object, min_distance
 
 
-def get_illumination(objects, nearest_object, normal_to_surface,  shifted_point):
+def get_illumination(objects, nearest_object, normal_to_surface, shifted_point):
     illumination = np.zeros((3))  # black
-   # normal_to_surface = normalize(intersection - nearest_object['center'])
-   # shifted_point = intersection + 1e-5 * normal_to_surface
     intersection_to_light = normalize(light['position'] - shifted_point)
 
     _, min_distance = nearest_intersected_object(objects, shifted_point, intersection_to_light)
@@ -46,49 +44,42 @@ def get_illumination(objects, nearest_object, normal_to_surface,  shifted_point)
     if is_shadowed:
         return illumination
 
-    # ambiant
-    illumination += nearest_object['ambient'] * light['ambient']
-
-    # diffuse
-    illumination += nearest_object['diffuse'] * light['diffuse'] * np.dot(intersection_to_light,
-                                                                          normal_to_surface)
-    # specular
+    ambient = nearest_object['ambient'] * light['ambient']
+    diffuse = nearest_object['diffuse'] * light['diffuse'] * np.dot(intersection_to_light,
+                                                                    normal_to_surface)
     intersection_to_camera = normalize(camera - shifted_point)
     H = normalize(intersection_to_light + intersection_to_camera)
-    illumination += nearest_object['specular'] * light['specular'] * np.dot(normal_to_surface, H) ** (
+    specular = nearest_object['specular'] * light['specular'] * np.dot(normal_to_surface, H) ** (
             nearest_object['shininess'] / 4)
 
-    # reflection
-    # color += illumination
-    return illumination
+    return ambient + diffuse + specular
 
 
-def trace_ray(objects, origin, direction, depth):
-    nearest_object, min_distance = nearest_intersected_object(objects, origin, direction)
+def trace_ray(objects, origin, ray_direction, depth):
+    nearest_object, min_distance = nearest_intersected_object(objects, origin, ray_direction)
     if nearest_object is None:
         return np.zeros(3)
-    intersection = origin + min_distance * direction
+    intersection = origin + min_distance * ray_direction
     normal_to_surface = normalize(intersection - nearest_object['center'])
     shifted_point = intersection + 1e-5 * normal_to_surface
     color = get_illumination(objects, nearest_object, normal_to_surface, shifted_point)
     # reflection
-
     origin = shifted_point
-    direction = reflected(direction, normal_to_surface)
+    ray_direction = reflected(ray_direction, normal_to_surface)
     if depth > 0:
-        color += trace_ray(objects, origin, direction, depth - 1) * nearest_object['reflection']
-    return color
+        color += trace_ray(objects, origin, ray_direction, depth - 1) * nearest_object['reflection']
+    return np.clip(color, 0, 1)
 
 
-width = 1000
-height = 1000
+width = 500
+height = 500
 max_depth = 3
 
 camera = np.array([0, 0, 1])
 ratio = float(width) / height
 screen = (-1, 1 / ratio, 1, -1 / ratio)  # left, top, right, bottom
 
-light = {'position': np.array([5, 5, 5]), 'ambient': np.array([1, 1, 1]), 'diffuse': np.array([1, 1, 1]),
+light = {'position': np.array([5, 10, 5]), 'ambient': np.array([1, 1, 1]), 'diffuse': np.array([1, 1, 1]),
          'specular': np.array([1, 1, 1])}
 
 objects = [
@@ -96,21 +87,22 @@ objects = [
      'diffuse': np.array([0.7, 0, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5},
     {'center': np.array([0.1, -0.3, 0]), 'radius': 0.1, 'ambient': np.array([0.1, 0.6, 0.1]),
      'diffuse': np.array([0.7, 0.5, 0.7]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5},
-    {'center': np.array([-0.3, 0, 0]), 'radius': 0.15, 'ambient': np.array([0, 0.1, 0]),
-     'diffuse': np.array([0, 0.6, 0]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5},
-    {'center': np.array([0, -900, 0]), 'radius': 900 - 0.7, 'ambient': np.array([0.1, 0.1, 0.1]),
+    {'center': np.array([-0.3, 0, 0]), 'radius': 0.30, 'ambient': np.array([0, 0.1, 0]),
+     'diffuse': np.array([0, 0.6, 0.9]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.7},
+    {'center': np.array([0, -900, 0]), 'radius': 899, 'ambient': np.array([0.1, 0.1, 0.1]),
      'diffuse': np.array([0.6, 0.6, 0.6]), 'specular': np.array([1, 1, 1]), 'shininess': 100, 'reflection': 0.5}
 ]
 
 image = np.zeros((height, width, 3))
 size = 0
+print("Process, please wait:")
 for i, y in enumerate(np.linspace(screen[1], screen[3], height)):
     for j, x in enumerate(np.linspace(screen[0], screen[2], width)):
         # screen is on origin
         pixel = np.array([x, y, 0])
         direction = normalize(pixel - camera)
         color = trace_ray(objects, camera, direction, 3)
-        image[i, j] = np.clip(color, 0, 1)
+        image[i, j] = color
 
     tmp_str = '{}/100'.format(int((i + 1) * 100 / height))
     print("\r" * size, end="")
